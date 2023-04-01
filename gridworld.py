@@ -88,6 +88,7 @@ class GridWorld(Env):
         self.optimizer = torch.optim.Adam(self.online_net.parameters(), lr=5e-4)
 
     def build_observation_space(self):
+        """
         robot_positions_x = np.asarray([robot.position[0] for robot in self.robots])
         robot_positions_y = np.asarray([robot.position[1] for robot in self.robots])
         IP_positions_x = np.asarray([interestpoint.position[0] for interestpoint in self.interestpoints])
@@ -95,6 +96,9 @@ class GridWorld(Env):
         IP_visit = np.asarray([interestpoint.visited for interestpoint in self.interestpoints])
 
         return np.concatenate((robot_positions_x, robot_positions_y, IP_positions_x, IP_positions_y, IP_visit), axis=None)
+        """
+        obs = np.zeros((3, self.dim, self.dim), dtype=np.float32)
+        return obs
 
     def reset(self):
         for robot in self.robots:
@@ -475,18 +479,23 @@ class Network(nn.Module):
 
         return action_index
 """
-class Network(nn.Module):
-    def __init__(self, observation_shape, action_space_size):
+class Network(nn.Module, GridWorld):
+    def __init__(self, observation_shape,action_space_size):
         super().__init__()
 
-        self.conv1 = nn.Conv2d(observation_shape[0], 32, kernel_size=8, stride=4)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
+        #self.conv1 = nn.Conv2d(observation_shape[0], 32, kernel_size=8, stride=4)
+        #self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
+        #self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
 
-        self.fc_input_dim = self._calculate_fc_input_dim(observation_shape)
+        #self.fc_input_dim = self._calculate_fc_input_dim(observation_shape)
 
-        self.fc1 = nn.Linear(self.fc_input_dim, 512)
-        self.fc2 = nn.Linear(512, action_space_size)
+        #self.fc1 = nn.Linear(self.fc_input_dim, 512)
+        #self.fc2 = nn.Linear(512, action_space_size)
+        self.conv1 = nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
+
+        self.fc1 = nn.Linear(4 * 4 * 32, 64)
+        self.fc2 = nn.Linear(64, action_space_size)
 
     def _calculate_fc_input_dim(self, observation_shape):
         dummy_input = torch.zeros(1, *observation_shape)
@@ -500,11 +509,22 @@ class Network(nn.Module):
         return x
 
     def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.max_pool2d(x, 2)
+        x = F.relu(self.conv2(x))
+        x = F.max_pool2d(x, 2)
+        x = x.view(-1, 32 * 7 * 7)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+    """"
+    def forward(self, x):
         x = self._forward_conv(x)
         x = x.view(x.size(0), -1)
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
+    """
     """
     def act(self, obs):
         if torch.cuda.is_available():
