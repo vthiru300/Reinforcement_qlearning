@@ -19,9 +19,9 @@ from imagemaker import *
 rew_buf = []
 steps = []
 class GridWorld(Env):
-    def __init__(self, number_of_robots, number_of_interestpoints, dim):
+    def __init__(self, number_of_robots, number_of_interestpoints, dim, observation_shape):
         super(GridWorld, self).__init__()
-
+        self.observation_shape =observation_shape
         # Hyperparameters
         self.alpha = 0.3
         self.gamma = 0.6
@@ -81,8 +81,8 @@ class GridWorld(Env):
             device = torch.device('cpu')
             print('running on the CPU')
 
-        self.online_net = Network(self.observation_size, self.action_space_size).to(device)
-        self.target_net = Network(self.observation_size, self.action_space_size).to(device)
+        self.online_net = Network(self.observation_shape, self.action_space_size).to(device)
+        self.target_net = Network(self.observation_shape, self.action_space_size).to(device)
         self.target_net.load_state_dict(self.online_net.state_dict())
 
         self.optimizer = torch.optim.Adam(self.online_net.parameters(), lr=5e-4)
@@ -436,7 +436,7 @@ class InterestPoint(Point):
 
         self.visited = False
 
-
+"""
 class Network(nn.Module):
     def __init__(self, observation_size, action_space_size):
         super().__init__()
@@ -470,6 +470,69 @@ class Network(nn.Module):
 
         obs_t = torch.as_tensor(obs, dtype=torch.float32).to(device)
         q_values = self(obs_t.unsqueeze(0))
+        max_q_index = torch.argmax(q_values, dim=1)[0]
+        action_index = max_q_index.detach().item()
+
+        return action_index
+"""
+class Network(nn.Module):
+    def __init__(self, observation_shape, action_space_size):
+        super().__init__()
+
+        self.conv1 = nn.Conv2d(observation_shape[0], 32, kernel_size=8, stride=4)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
+
+        self.fc_input_dim = self._calculate_fc_input_dim(observation_shape)
+
+        self.fc1 = nn.Linear(self.fc_input_dim, 512)
+        self.fc2 = nn.Linear(512, action_space_size)
+
+    def _calculate_fc_input_dim(self, observation_shape):
+        dummy_input = torch.zeros(1, *observation_shape)
+        dummy_output = self._forward_conv(dummy_input)
+        return dummy_output.view(1, -1).size(1)
+
+    def _forward_conv(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        return x
+
+    def forward(self, x):
+        x = self._forward_conv(x)
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+    """
+    def act(self, obs):
+        if torch.cuda.is_available():
+            device = torch.device('cuda:0')
+        else:
+            device = torch.device('cpu')
+
+        obs_t = torch.as_tensor(obs, dtype=torch.float32).to(device).unsqueeze(0)
+        q_values = self(obs_t)
+        max_q_index = torch.argmax(q_values, dim=1)[0]
+        action_index = max_q_index.detach().item()
+
+        return action_index
+        """
+    def act(self, obs):
+        if torch.cuda.is_available():
+            device = torch.device('cuda:0')
+        else:
+            device = torch.device('cpu')
+
+        # Add a channel dimension
+        obs = np.expand_dims(obs, axis=0) # For numpy arrays
+        obs_t = torch.as_tensor(obs, dtype=torch.float32).to(device)
+
+        # If your input is already a torch tensor, you can use unsqueeze:
+        # obs_t = obs_t.unsqueeze(0).to(device)
+
+        q_values = self(obs_t.unsqueeze(0)) # Add a batch dimension
         max_q_index = torch.argmax(q_values, dim=1)[0]
         action_index = max_q_index.detach().item()
 
